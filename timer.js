@@ -9,7 +9,7 @@
 angular.module('markau.timer', []).
 
 directive('markauTimer', function($timeout) {
-    return {        
+    return {
         restrict: 'E',
         replace: true,
         templateUrl: 'bower_components/angular-svg-timer/timer.html',
@@ -17,12 +17,14 @@ directive('markauTimer', function($timeout) {
             time: '=time',
             status: '=status',
             events: '=events',
+            autostart: '=autostart',
+            restart: '=restart'
         },
         controllerAs: 'timerController',
-        //bindToController: true,          
-        controller: function ($scope, $element, $attrs, $timeout) {
+        //bindToController: true,
+        controller: function($scope, $element, $attrs, $timeout) {
 
-        	// Private properties
+            // Private properties
             var go;
             var missedTicks;
             var interval;
@@ -37,10 +39,10 @@ directive('markauTimer', function($timeout) {
             var myTimeout = null;
             var degrees;
             var hasHalftimeEvent = false;
-			var _this = this;
+            var _this = this;
 
             // Format milliseconds as a string.
-             var formatMillisToTime = function (millis) {
+            var formatMillisToTime = function(millis) {
                 // Handles when the timer reaches 0 and goes negative (displays + not -)
                 var response = '';
                 if (millis < 0) {
@@ -55,7 +57,7 @@ directive('markauTimer', function($timeout) {
                 return response;
             };
 
-            var init = function () {
+            var init = function() {
                 go = false;
                 missedTicks = null;
                 interval = 10;
@@ -66,6 +68,7 @@ directive('markauTimer', function($timeout) {
                 time = 0;
                 elapsed = 0;
                 totalTime = 0;
+                $scope.restart = false;
 
                 goalTimeMillis = parseInt($scope.time) * 1000;
                 _this.formattedTime = formatMillisToTime(goalTimeMillis);
@@ -76,11 +79,16 @@ directive('markauTimer', function($timeout) {
 
                 // Determine which events to subscribe to
                 if ($scope.events) {
-					$scope.events.forEach(function(event) {
-	                    if (event.time === 'half') {
-	                        hasHalftimeEvent = true;
-	                    }
-	                });
+                    $scope.events.forEach(function(event) {
+                        if (event.time === 'half') {
+                            hasHalftimeEvent = true;
+                        }
+                    });
+                }
+
+                // Autostart
+                if ($scope.autostart) {
+                    start($scope.time);
                 }
             };
 
@@ -90,19 +98,19 @@ directive('markauTimer', function($timeout) {
             this.startPauseTimer = function() {
                 if (_this.timerRunning) {
                     //$scope.status = 'paused';
-                    pause();
+                    stop();
                     _this.playVisibility = 1;
-                    _this.pauseVisibility  = 0;
+                    _this.pauseVisibility = 0;
                 } else {
                     if (($scope.status !== 'halftime') && ($scope.status !== 'complete')) {
                         $scope.status = 'running';
                     }
                     _this.playVisibility = 0;
-                    _this.pauseVisibility  = 1;
+                    _this.pauseVisibility = 1;
                     if (startTime === 0) {
                         start(goalTimeMillis);
                     } else {
-                        start(pauseTime);           
+                        start(pauseTime);
                     }
                 }
             };
@@ -110,24 +118,39 @@ directive('markauTimer', function($timeout) {
             function start(time) {
                 _this.timerRunning = true;
                 startTime = time;
+                _this.playVisibility = 0;
+                _this.pauseVisibility = 1;
                 startCountdown(time);
             }
 
             function stop() {
-              _this.timerRunning = false;
-              go = false;
-              $timeout.cancel(myTimeout);
-              finalTime = durationMsec - time;
+                _this.timerRunning = false;
+                go = false;
+                startTime = 0;
+                pauseTime = 0;
+                finalTime = 0;
+                durationMsec = 0;
+                time = 0;
+                elapsed = 0;
+                totalTime = 0;
+                _this.playVisibility = 1;
+                _this.pauseVisibility = 0;
+                goalTimeMillis = parseInt($scope.time) * 1000;
+                _this.formattedTime = formatMillisToTime(goalTimeMillis);
+                degrees = 360 / goalTimeMillis;
+                $scope.restart = false;
+                $scope.status = 'notstarted';
+                $timeout.cancel(myTimeout);
             }
 
             function startCountdown(duration) {
-              durationMsec = duration;
-              startTime = Date.now();
-              // end_time = startTime + durationMsec;
-              time = 0;
-              elapsed = '0.0';
-              go = true;
-              _tick();
+                durationMsec = duration;
+                startTime = Date.now();
+                // end_time = startTime + durationMsec;
+                time = 0;
+                elapsed = '0.0';
+                go = true;
+                _tick();
             }
 
             function pause() {
@@ -164,20 +187,20 @@ directive('markauTimer', function($timeout) {
                     $scope.status = 'complete';
                     // console.log('complete: ' + lap());
                     update(359, totalTime / 1000);
-                } 
+                }
 
                 // Check for Half-time event
                 if (hasHalftimeEvent) {
                     if (totalTime === (goalTimeMillis / 2)) {
                         $scope.status = 'halftime';
                         // console.log('halftime: ' + lap());
-                    }                                    
+                    }
                 }
 
                 // Other events here
 
 
-                // Show the new time  
+                // Show the new time
                 _this.formattedTime = formatMillisToTime(lap());
 
                 // Draw more of the timer circle if not complete
@@ -202,85 +225,101 @@ directive('markauTimer', function($timeout) {
             }
 
             // Check for changes to time based on prep work
-            $scope.$watch('time', function(newValue, oldValue){
+            $scope.$watch('time', function(newValue, oldValue) {
                 $scope.time = newValue;
                 init();
             });
 
+            $scope.$watch('restart', function(newValue, oldValue) {
+                if (newValue) {
+                    stop();
+                    start(goalTimeMillis);
+                }
+            });
 
             // SVG drawing
             function update(deg, sec) {
-                var RGB  = [];
+                var RGB = [];
                 _this.draw = drawCoord(radius, deg);
-                
+
                 col_H = 120 - Math.round(deg / 3);
-                RGB   = hsl2rgb(col_H, col_S, col_L);
+                RGB = hsl2rgb(col_H, col_S, col_L);
             }
 
 
             var radius = 60;
             var offset = 10;
-            
+
             var col_H = 120;
             var col_S = 95;
             var col_L = 48;
-            
+
             function hue2rgb(t1, t2, t3) {
-                if (t3 < 0) { t3 += 1; }
-                if (t3 > 1) { t3 -= 1; }
-                
-                if (t3 * 6 < 1) { return t2 + (t1 - t2) * 6 * t3; }
-                if (t3 * 2 < 1) { return t1; }
-                if (t3 * 3 < 2) { return t2 + (t1 - t2) * (2 / 3 - t3) * 6; }
-                
+                if (t3 < 0) {
+                    t3 += 1;
+                }
+                if (t3 > 1) {
+                    t3 -= 1;
+                }
+
+                if (t3 * 6 < 1) {
+                    return t2 + (t1 - t2) * 6 * t3;
+                }
+                if (t3 * 2 < 1) {
+                    return t1;
+                }
+                if (t3 * 3 < 2) {
+                    return t2 + (t1 - t2) * (2 / 3 - t3) * 6;
+                }
+
                 return t2;
             }
 
-            function hsl2rgb(H, S, L){
+            function hsl2rgb(H, S, L) {
                 var R, G, B;
                 var t1, t2;
-                
+
                 H = H / 360;
                 S = S / 100;
                 L = L / 100;
-                
-                if ( S === 0 ) {
+
+                if (S === 0) {
                     R = G = B = L;
                 } else {
-                    
+
                     t1 = (L < 0.5) ? L * (1 + S) : L + S - L * S;
                     t2 = 2 * L - t1;
-                    
-                    R = hue2rgb(t1, t2, H + 1/3);
+
+                    R = hue2rgb(t1, t2, H + 1 / 3);
                     G = hue2rgb(t1, t2, H);
-                    B = hue2rgb(t1, t2, H - 1/3);
+                    B = hue2rgb(t1, t2, H - 1 / 3);
                 }
-                
+
                 return [
-                    Math.round(R * 255), 
-                    Math.round(G * 255), 
+                    Math.round(R * 255),
+                    Math.round(G * 255),
                     Math.round(B * 255)
                 ];
             }
-            
+
             function drawCoord(radius, degrees) {
                 var radians = degrees * Math.PI / 180;
-                
+
                 var rX = radius + offset + Math.sin(radians) * radius;
                 var rY = radius + offset - Math.cos(radians) * radius;
-                
+
                 var dir = (degrees > 180) ? 1 : 0;
-                
-                var coord = 'M' + (radius + offset) + ',' + (radius + offset) + ' ' + 
-                            'L' + (radius + offset) + ',' + offset + ' ' +
-                            'A' + radius + ',' + radius + ' 0 ' + dir + ',1 ' +
-                            rX + ',' + rY;
-                
+
+                var coord = 'M' + (radius + offset) + ',' + (radius + offset) + ' ' +
+                    'L' + (radius + offset) + ',' + offset + ' ' +
+                    'A' + radius + ',' + radius + ' 0 ' + dir + ',1 ' +
+                    rX + ',' + rY;
+
                 return coord;
             }
 
             // Ensure $timeouts are cleared
-            $scope.$on('$destroy', function(){
+            $scope.$on('$destroy', function() {
                 $timeout.cancel(myTimeout);
             });
         }
